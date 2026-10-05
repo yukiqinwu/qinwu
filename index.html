@@ -1,1 +1,392 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>功德木鱼 · 狗爪版</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  html, body {
+    height: 100%;
+    background: #ffffff;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+
+    /* 淡黄色狗爪印背景 */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='%23f7e8b0' opacity='0.6'%3E%3Ccircle cx='60' cy='70' r='14'/%3E%3Ccircle cx='36' cy='46' r='9'/%3E%3Ccircle cx='60' cy='38' r='9'/%3E%3Ccircle cx='84' cy='46' r='9'/%3E%3C/g%3E%3C/svg%3E");
+    background-size: 110px 110px;
+  }
+
+  #app {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+  }
+
+  /* 角色容器 */
+  #character {
+    position: relative;
+    width: min(65vw, 320px);
+    height: min(65vw, 320px);
+    display: grid;
+    place-items: center;
+    transition: transform 0.15s ease;
+  }
+
+  #character img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    -webkit-user-drag: none;
+  }
+
+  /* 点击缩放动画 */
+  #character.clicked {
+    animation: clickScale 0.2s ease;
+  }
+  @keyframes clickScale {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(0.88); }
+    100% { transform: scale(1); }
+  }
+
+  /* 对话框 */
+  #dialog {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 12px;
+    padding: 10px 18px;
+    background: #f0f0f0;
+    border: 2px solid #333;
+    border-radius: 16px;
+    color: #222;
+    font-size: 15px;
+    line-height: 1.4;
+    white-space: nowrap;
+    max-width: 80vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transition: opacity 0.15s;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  #dialog.hidden {
+    display: none;
+  }
+
+  /* 功德文字层 */
+  #text-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  .merit-text {
+    position: absolute;
+    left: 50%;
+    top: 20%;
+    transform: translateX(-50%);
+    font-size: 20px;
+    font-weight: 700;
+    color: #d4a017;
+    text-shadow: 0 2px 6px rgba(255,255,255,0.9);
+    white-space: nowrap;
+    pointer-events: none;
+    animation: floatUp 1s ease-out forwards;
+  }
+
+  @keyframes floatUp {
+    0%   { opacity: 0; transform: translate(-50%, 0) scale(0.8); }
+    20%  { opacity: 1; transform: translate(-50%, -10px) scale(1.05); }
+    60%  { opacity: 1; transform: translate(-50%, -40px) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -80px) scale(0.95); }
+  }
+
+  /* 提示文字 */
+  #hint {
+    position: absolute;
+    bottom: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 14px;
+    color: #aaa;
+    letter-spacing: 0.1em;
+    pointer-events: none;
+    white-space: nowrap;
+    transition: opacity 0.3s;
+  }
+  #hint.hidden {
+    opacity: 0;
+  }
+
+  /* 选项按钮 */
+  #choice {
+    position: absolute;
+    bottom: -100px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 20px;
+    z-index: 20;
+  }
+  #choice.hidden {
+    display: none;
+  }
+  #choice button {
+    padding: 10px 28px;
+    font-size: 16px;
+    border: 2px solid #333;
+    border-radius: 12px;
+    background: #fff;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    font-family: inherit;
+  }
+  #choice button:active {
+    transform: scale(0.95);
+    background: #f0f0f0;
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="character">
+    <img id="main-img" src="1.jpg" alt="角色">
+    <div id="dialog" class="hidden"></div>
+  </div>
+  <div id="text-layer"></div>
+  <div id="hint">点击角色头部</div>
+  <div id="choice" class="hidden">
+    <button id="btn-good">好</button>
+    <button id="btn-bad">不好</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const character = document.getElementById('character');
+  const mainImg = document.getElementById('main-img');
+  const dialog = document.getElementById('dialog');
+  const textLayer = document.getElementById('text-layer');
+  const hint = document.getElementById('hint');
+  const choiceBox = document.getElementById('choice');
+  const btnGood = document.getElementById('btn-good');
+  const btnBad = document.getElementById('btn-bad');
+
+  // 状态变量
+  let phase = 'start';        // 当前阶段
+  let clickCount = 0;         // 用于 start 和 phase15 阶段的累计点击
+  let afterClickCount = 0;    // 用于 good_after / bad_after 阶段的点击计数
+  let choiceResult = '';      // 'good' 或 'bad'
+
+  // 设置图片
+  function setImage(num) {
+    mainImg.src = num + '.jpg';
+  }
+
+  // 设置对话框
+  function setDialog(text) {
+    if (text && text.trim() !== '') {
+      dialog.textContent = text;
+      dialog.classList.remove('hidden');
+    } else {
+      dialog.textContent = '';
+      dialog.classList.add('hidden');
+    }
+  }
+
+  // 触发缩放动画
+  function triggerScale() {
+    character.classList.remove('clicked');
+    void character.offsetWidth;
+    character.classList.add('clicked');
+    setTimeout(() => character.classList.remove('clicked'), 200);
+  }
+
+  // 显示功德+1
+  function showMerit() {
+    const el = document.createElement('div');
+    el.className = 'merit-text';
+    el.textContent = '功德 +1';
+    // 随机左右偏移
+    el.style.marginLeft = (Math.random() * 40 - 20) + 'px';
+    textLayer.appendChild(el);
+    setTimeout(() => el.remove(), 1000);
+  }
+
+  // 显示选项
+  function showChoice() {
+    choiceBox.classList.remove('hidden');
+  }
+  function hideChoice() {
+    choiceBox.classList.add('hidden');
+  }
+
+  // 隐藏提示
+  function hideHint() {
+    hint.classList.add('hidden');
+  }
+
+  // 处理点击（按下）
+  function handlePress(e) {
+    if (phase === 'choice') return; // 选择状态，忽略点击
+
+    // 缩放动画 + 功德文字
+    triggerScale();
+    showMerit();
+
+    // 根据阶段执行逻辑
+    switch (phase) {
+      case 'start':
+        clickCount++;
+        if (clickCount >= 15) {
+          phase = 'phase15';
+          setImage(2);
+          setDialog('再点，我的脑袋就要坏了');
+          hideHint();
+          clickCount = 0; // 重置，用于 phase15 的计数
+        }
+        break;
+
+      case 'phase15':
+        // 点击时临时显示 3.jpg 和对话框
+        setImage(3);
+        setDialog('怎么又点……');
+        setTimeout(() => {
+          if (phase === 'phase15') {
+            setImage(2);
+            setDialog('');
+          }
+        }, 300);
+
+        clickCount++;
+        if (clickCount >= 10) {
+          phase = 'phase25';
+          setImage(4);
+          setDialog('我的呆毛都乱了');
+          clickCount = 0;
+        }
+        break;
+
+      case 'phase25':
+        // 先显示 5.jpg，再变 6.jpg，并出现选项
+        setImage(5);
+        setTimeout(() => {
+          setImage(6);
+          setDialog('乖孩子，别点了');
+          showChoice();
+          phase = 'choice';
+        }, 100);
+        break;
+
+      case 'good_idle':
+        // 用户点击了，进入 good_after
+        phase = 'good_after';
+        afterClickCount = 0;
+        setImage(8);
+        setDialog('嗯……');
+        setTimeout(() => {
+          if (phase === 'good_after') {
+            setImage(7);
+            setDialog('');
+          }
+        }, 300);
+        break;
+
+      case 'good_after':
+      case 'bad_after':
+        setImage(8);
+        setDialog('嗯……');
+        setTimeout(() => {
+          if (phase === 'good_after' || phase === 'bad_after') {
+            setImage(7);
+            setDialog('');
+          }
+        }, 300);
+
+        afterClickCount++;
+        if (afterClickCount >= 10) {
+          phase = 'after_10';
+          setImage(9);
+          setDialog('诶……');
+          afterClickCount = 0;
+        }
+        break;
+
+      case 'after_10':
+        if (choiceResult === 'good') {
+          phase = 'final_good';
+          setImage(6);
+          setDialog('说话不算数……坏孩子……');
+        } else if (choiceResult === 'bad') {
+          phase = 'final_bad';
+          setImage(6);
+          setDialog('坏孩子……你没有心');
+        }
+        break;
+
+      default:
+        // final 状态不再改变图片和文字，但点击动画继续
+        break;
+    }
+  }
+
+  // 选择“好”
+  btnGood.addEventListener('click', function () {
+    choiceResult = 'good';
+    hideChoice();
+    phase = 'good_idle';
+    setImage(6);
+    setDialog('乖孩子……');
+  });
+
+  // 选择“不好”
+  btnBad.addEventListener('click', function () {
+    choiceResult = 'bad';
+    hideChoice();
+    phase = 'bad_after';
+    afterClickCount = 0;
+    setImage(8);
+    setDialog('嗯……');
+    setTimeout(() => {
+      if (phase === 'bad_after') {
+        setImage(7);
+        setDialog('');
+      }
+    }, 300);
+  });
+
+  // 绑定点击事件（使用 pointerdown 以兼容移动端和桌面）
+  character.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    handlePress(e);
+  });
+
+  // 防止右键菜单
+  character.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+  });
+
+})();
+</script>
+
+</body>
+</html>
